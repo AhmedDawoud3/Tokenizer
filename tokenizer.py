@@ -78,8 +78,8 @@ class Tokenizer:
 
     def update_tokentobytes(self):
         self.tokentobytes = {token: bytes([token]) for token in range(256)}
-        for pair, id in self.merges:
-            self.tokentobytes[id] = (
+        for pair, _id in self.merges:
+            self.tokentobytes[_id] = (
                 self.tokentobytes[pair[0]] + self.tokentobytes[pair[1]]
             )
 
@@ -112,12 +112,12 @@ class Tokenizer:
         while i < len(ids) - 1:
             if ids[i] == pair[0] and ids[i + 1] == pair[1]:
                 new_ids.append(new_id)
-                i += 1
+                i += 2
             else:
                 new_ids.append(ids[i])
-            i += 1
-        if new_ids[-1] != ids[-1]:
-            new_ids.append(ids[-1])
+                i += 1
+        if i < len(ids):
+            new_ids.append(ids[i])
 
         return new_ids
 
@@ -136,8 +136,8 @@ class Tokenizer:
         return self.__repr__()
 
     @property
-    def tokens(self) -> List[bytes]:
-        return [self.tokentobytes[i] for i in range(self.vocab_size)]
+    def tokens(self) -> List[str]:
+        return [t.decode("utf-8", errors="ignore") for t in self.tokentobytes.values()]
 
     @classmethod
     def text_to_ids(cls, text: str) -> List[int]:

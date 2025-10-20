@@ -74,3 +74,72 @@ class TestTokenizerInit:
         assert tokenizer.tokentobytes[97] == b"a"
         assert tokenizer.tokentobytes[98] == b"b"
         assert tokenizer.tokentobytes[256] == b"ab"
+
+
+class TestTokenizerArabic: # type: ignore
+    def test_encode_decode_arabic_with_tashkil(self):
+        """Test encoding and decoding Arabic text with tashkil (diacritics)."""
+        tokenizer = Tokenizer()
+        arabic_text = "مَرْحَبًا بِكَ فِي الْعَالَمِ"
+        ids = tokenizer.encode(arabic_text)
+        decoded = tokenizer.decode(ids)
+        assert decoded == arabic_text
+        assert all(isinstance(id, int) for id in ids)
+
+    def test_train_arabic_with_tashkil(self):
+        """Test training on Arabic text with tashkil."""
+        text = "مَرْحَبًا مَرْحَبًا بِكَ بِكَ فِي فِي الْعَالَمِ الْعَالَمِ"
+        tokenizer = Tokenizer()
+        tokenizer.train(text, num_merges=10, verbose=False)
+        assert tokenizer.vocab_size == 266
+        assert len(tokenizer.merges) == 10
+
+    def test_arabic_tashkil_compression(self):
+        """Test that Arabic with tashkil gets compressed during training."""
+        text = "اللَّهُ اللَّهُ اللَّهُ الرَّحْمَٰنِ الرَّحْمَٰنِ الرَّحِيمِ الرَّحِيمِ"
+        tokenizer = Tokenizer()
+        original_ids = tokenizer.encode(text)
+        original_len = len(original_ids)
+
+        tokenizer.train(text, num_merges=20, verbose=False)
+        compressed_ids = tokenizer.encode(text)
+
+        assert len(compressed_ids) < original_len
+        assert tokenizer.decode(compressed_ids) == text
+
+    def test_mixed_arabic_english_with_tashkil(self):
+        """Test encoding mixed Arabic (with tashkil) and English text."""
+        tokenizer = Tokenizer()
+        mixed_text = "Hello مَرْحَبًا World عَالَم"
+        ids = tokenizer.encode(mixed_text)
+        decoded = tokenizer.decode(ids)
+        assert decoded == mixed_text
+
+    def test_arabic_tashkil_tokentobytes(self):
+        """Test tokentobytes mapping for Arabic with tashkil after merges."""
+        merges = [((216, 167), 256), ((217, 132), 257)]  # Common Arabic byte pairs
+        tokenizer = Tokenizer(merges)
+        assert 256 in tokenizer.tokentobytes
+        assert 257 in tokenizer.tokentobytes
+        assert len(tokenizer.tokentobytes[256]) == 2
+        assert len(tokenizer.tokentobytes[257]) == 2
+
+    def test_quran_verse_with_full_tashkil(self):
+        """Test complete Quranic verse with full tashkil."""
+        tokenizer = Tokenizer()
+        quran_verse = "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ"
+        ids = tokenizer.encode(quran_verse)
+        decoded = tokenizer.decode(ids)
+        assert decoded == quran_verse
+        assert len(ids) > 0
+
+    def test_arabic_tashkil_repeated_patterns(self):
+        """Test that repeated Arabic patterns with tashkil get merged efficiently."""
+        text = "كَتَبَ كَتَبَ كَتَبَ قَرَأَ قَرَأَ قَرَأَ"
+        tokenizer = Tokenizer()
+        tokenizer.train(text, num_merges=15, verbose=False)
+
+        encoded = tokenizer.encode(text)
+        decoded = tokenizer.decode(encoded)
+        assert decoded == text
+        assert tokenizer.vocab_size == 271
