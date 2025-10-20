@@ -12,11 +12,11 @@ class Tokenizer:
                 for pair, id in merges
             ):
                 raise ValueError("Merges must be a list of ((int, int), int) tuples.")
-            for i in range(1, len(merges)):
-                if merges[i][1] != 256 + i:
+            for i, merge in enumerate(merges):
+                if merge[1] != 256 + i:
                     raise ValueError(
                         f"Merges must have consecutive IDs starting from 256. "
-                        f"Found {merges[i][1]} at position {i}, expected {256 + i}."
+                        f"Found {merge[1]} at position {i}, expected {256 + i}."
                     )
 
         self.merges = merges if merges is not None else []
@@ -24,19 +24,19 @@ class Tokenizer:
         self.update_tokentobytes()
 
     def train_from_file(
-        self, file_path: str, vocab_size=None, new_merges=None, verbose=False
+        self, file_path: str, vocab_size=None, num_merges=None, verbose=False
     ):
         with open(file_path, "r", encoding="utf-8") as f:
             text = f.read()
-        return self.train(text, vocab_size, new_merges, verbose)
+        return self.train(text, vocab_size, num_merges, verbose)
 
     def train(
-        self, text: str | List[int], vocab_size=None, new_merges=None, verbose=False
+        self, text: str | List[int], vocab_size=None, num_merges=None, verbose=False
     ):
         if vocab_size is None:
-            if new_merges is None:
-                raise ValueError("Either vocab_size or new_merges must be provided.")
-            vocab_size = self.vocab_size + new_merges
+            if num_merges is None:
+                raise ValueError("Either vocab_size or num_merges must be provided.")
+            vocab_size = self.vocab_size + num_merges
 
         if isinstance(text, str):
             text = self.text_to_ids(text)
