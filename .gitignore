@@ -1,0 +1,16 @@
+# python gitignore file
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+env/
+venv/
+ENV/
+build/
+dist/
+
+
+.pytest_cache/
+
+*.txt
+*.bpe
