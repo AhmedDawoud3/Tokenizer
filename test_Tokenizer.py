@@ -1,4 +1,5 @@
 import pytest
+
 from tokenizer import Tokenizer
 
 
@@ -76,7 +77,7 @@ class TestTokenizerInit:
         assert tokenizer.tokentobytes[256] == b"ab"
 
 
-class TestTokenizerArabic: # type: ignore
+class TestTokenizerArabic:  # type: ignore
     def test_encode_decode_arabic_with_tashkil(self):
         """Test encoding and decoding Arabic text with tashkil (diacritics)."""
         tokenizer = Tokenizer()

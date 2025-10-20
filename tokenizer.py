@@ -146,3 +146,8 @@ class Tokenizer:
     @classmethod
     def stats(cls, ids: List[int]) -> Counter[tuple[int, int]]:
         return Counter(zip(ids, ids[1:]))
+
+    def dump_tokens(self, filename: str):
+        with open(filename, "w", encoding="utf-8") as f:
+            for token in self.tokens:
+                f.write(f"{token}\n")
