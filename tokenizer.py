@@ -3,6 +3,9 @@ from typing import List
 
 from tqdm import tqdm
 
+GPT4_SPLIT_PATTERN = r"""'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+(?:\p{L}\p{Mn}*)+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]++[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+"""
+GPT2_SPLIT_PATTERN = r"""'s|'t|'re|'ve|'m|'ll|'d| ?(?:\p{L}\p{Mn}*)+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+
 
 class Tokenizer:
     def __init__(self, merges: List[tuple[tuple[int, int], int]] = None):  # type: ignore
@@ -30,18 +33,15 @@ class Tokenizer:
             text = f.read()
         return self.train(text, vocab_size, num_merges, verbose)
 
-    def train(
-        self, text: str | List[int], vocab_size=None, num_merges=None, verbose=False
-    ):
+    def train(self, text: str, vocab_size=None, num_merges=None, verbose=False):
         if vocab_size is None:
             if num_merges is None:
                 raise ValueError("Either vocab_size or num_merges must be provided.")
             vocab_size = self.vocab_size + num_merges
 
-        if isinstance(text, str):
-            text = self.text_to_ids(text)
+        ids = self.text_to_ids(text)
 
-        original_len = len(text)
+        original_len = len(ids)
 
         progress = tqdm(
             range(vocab_size - self.vocab_size),
@@ -50,7 +50,7 @@ class Tokenizer:
             desc="Training BPE",
         )
         for _ in progress:
-            stats = self.stats(text)
+            stats = self.stats(ids)
             replace = max(stats.items(), key=lambda x: x[1])
             pair, count = replace
             new_id = 256 + len(self.merges)
@@ -61,14 +61,14 @@ class Tokenizer:
                     "new_id": new_id,
                 }
             )
-            new_text = self.merge(text, pair, new_id)
+            new_ids = self.merge(ids, pair, new_id)
             self.merges.append((pair, new_id))
-            text = new_text
+            ids = new_ids
 
         if verbose:
             print(
-                f"Original length: {original_len}, New length: {len(text)},"
-                " Compression: {original_len / len(text):.2f}x"
+                f"Original length: {original_len}, New length: {len(ids)},"
+                f" Compression: {original_len / len(ids):.2f}x"
             )
 
         self.vocab_size = vocab_size
