@@ -144,3 +144,157 @@ class TestTokenizerArabic:  # type: ignore
         decoded = tokenizer.decode(encoded)
         assert decoded == text
         assert tokenizer.vocab_size == 271
+
+
+class TestTokenizerArabicRegex:
+    """Test Arabic text with tashkil using regex-based tokenization."""
+
+    def test_regex_split_arabic_with_tashkil(self):
+        """Test that regex correctly splits Arabic text with tashkil."""
+        tokenizer = Tokenizer()
+        text = "مَرْحَبًا بِكَ فِي الْعَالَمِ"
+        chunks = tokenizer.regex_split(text)
+        assert len(chunks) > 0
+        # Verify that rejoining chunks reconstructs the original text
+        assert "".join(chunks) == text
+
+    def test_encode_decode_arabic_regex_with_tashkil(self):
+        """Test encoding and decoding Arabic text with tashkil using regex."""
+        tokenizer = Tokenizer()
+        arabic_text = "مَرْحَبًا بِكَ فِي الْعَالَمِ"
+        chunks = tokenizer.regex_split(arabic_text)
+        ids = tokenizer.encode(chunks)
+        decoded = tokenizer.decode([item for sublist in ids for item in sublist])  # type: ignore
+        assert decoded == arabic_text
+
+    def test_train_arabic_regex_with_tashkil(self):
+        """Test training on Arabic text with tashkil using regex."""
+        text = "مَرْحَبًا مَرْحَبًا بِكَ بِكَ فِي فِي الْعَالَمِ الْعَالَمِ"
+        tokenizer = Tokenizer()
+        tokenizer.train(text, num_merges=15, verbose=False)
+        assert tokenizer.vocab_size == 271
+        assert len(tokenizer.merges) == 15
+
+    def test_arabic_tashkil_compression_regex(self):
+        """Test that Arabic with tashkil gets compressed during training with regex."""
+        text = "اللَّهُ اللَّهُ اللَّهُ الرَّحْمَٰنِ الرَّحْمَٰنِ الرَّحِيمِ الرَّحِيمِ"
+        tokenizer = Tokenizer()
+        chunks = tokenizer.regex_split(text)
+        original_ids = tokenizer.encode(chunks)
+        original_len = sum(len(seq) for seq in original_ids)  # type: ignore
+
+        tokenizer.train(text, num_merges=25, verbose=False)
+        chunks = tokenizer.regex_split(text)
+        compressed_ids = tokenizer.encode(chunks)
+        compressed_len = sum(len(seq) for seq in compressed_ids)  # type: ignore
+
+        assert compressed_len < original_len
+        decoded = tokenizer.decode([item for sublist in compressed_ids for item in sublist])  # type: ignore
+        assert decoded == text
+
+    def test_mixed_arabic_english_regex_with_tashkil(self):
+        """Test encoding mixed Arabic (with tashkil) and English text with regex."""
+        tokenizer = Tokenizer()
+        mixed_text = "Hello مَرْحَبًا World عَالَم"
+        chunks = tokenizer.regex_split(mixed_text)
+        ids = tokenizer.encode(chunks)
+        decoded = tokenizer.decode([item for sublist in ids for item in sublist])  # type: ignore
+        assert decoded == mixed_text
+
+    def test_quran_verse_regex_with_full_tashkil(self):
+        """Test complete Quranic verse with full tashkil using regex."""
+        tokenizer = Tokenizer()
+        quran_verse = "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ"
+        chunks = tokenizer.regex_split(quran_verse)
+        ids = tokenizer.encode(chunks)
+        decoded = tokenizer.decode([item for sublist in ids for item in sublist])  # type: ignore
+        assert decoded == quran_verse
+        assert len(chunks) > 0
+
+    def test_arabic_tashkil_repeated_patterns_regex(self):
+        """Test that repeated Arabic patterns with tashkil get merged efficiently with regex."""
+        text = "كَتَبَ كَتَبَ كَتَبَ قَرَأَ قَرَأَ قَرَأَ"
+        tokenizer = Tokenizer()
+        tokenizer.train(text, num_merges=20, verbose=False)
+
+        chunks = tokenizer.regex_split(text)
+        encoded = tokenizer.encode(chunks)
+        decoded = tokenizer.decode([item for sublist in encoded for item in sublist])  # type: ignore
+        assert decoded == text
+        assert tokenizer.vocab_size == 276
+
+    def test_arabic_sentence_boundaries_regex(self):
+        """Test that regex properly handles Arabic sentence boundaries with tashkil."""
+        tokenizer = Tokenizer()
+        text = "السَّلَامُ عَلَيْكُمْ. كَيْفَ حَالُكَ؟"
+        chunks = tokenizer.regex_split(text)
+        # Should split on punctuation
+        assert len(chunks) > 2
+        ids = tokenizer.encode(chunks)
+        decoded = tokenizer.decode([item for sublist in ids for item in sublist])  # type: ignore
+        assert decoded == text
+
+    def test_arabic_numbers_with_tashkil_regex(self):
+        """Test Arabic text with numbers and tashkil using regex."""
+        tokenizer = Tokenizer()
+        text = "لَدَيْنَا 123 كِتَابًا"
+        chunks = tokenizer.regex_split(text)
+        ids = tokenizer.encode(chunks)
+        decoded = tokenizer.decode([item for sublist in ids for item in sublist])  # type: ignore
+        assert decoded == text
+
+    def test_long_arabic_text_with_tashkil_regex(self):
+        """Test longer Arabic text with tashkil for realistic compression."""
+        text = """قَالَ اللَّهُ تَعَالَى: بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ. 
+        الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ الرَّحْمَٰنِ الرَّحِيمِ مَالِكِ يَوْمِ الدِّينِ.
+        إِيَّاكَ نَعْبُدُ وَإِيَّاكَ نَسْتَعِينُ. اهْدِنَا الصِّرَاطَ الْمُسْتَقِيمَ."""
+
+        tokenizer = Tokenizer()
+        chunks_before = tokenizer.regex_split(text)
+        ids_before = tokenizer.encode(chunks_before)
+        len_before = sum(len(seq) for seq in ids_before)  # type: ignore
+
+        tokenizer.train(text, num_merges=50, verbose=False)
+
+        chunks_after = tokenizer.regex_split(text)
+        ids_after = tokenizer.encode(chunks_after)
+        len_after = sum(len(seq) for seq in ids_after)  # type: ignore
+
+        decoded = tokenizer.decode([item for sublist in ids_after for item in sublist])  # type: ignore
+
+        assert decoded == text
+        assert len_after < len_before
+        assert tokenizer.vocab_size == 306
+
+    def test_arabic_with_multiple_tashkil_regex(self):
+        """Test Arabic words with multiple consecutive tashkil marks."""
+        tokenizer = Tokenizer()
+        text = "مُحَمَّدٌ صَلَّى اللَّهُ عَلَيْهِ وَسَلَّمَ"
+        chunks = tokenizer.regex_split(text)
+        ids = tokenizer.encode(chunks)
+        decoded = tokenizer.decode([item for sublist in ids for item in sublist])  # type: ignore
+        assert decoded == text
+
+    def test_regex_preserves_tashkil_order(self):
+        """Test that regex splitting preserves the order of tashkil marks."""
+        tokenizer = Tokenizer()
+        # Text with various tashkil: fatha, kasra, damma, sukun, shadda, tanween
+        text = "مَكْتُوبٌ بِالْحَرَكَاتِ الْمُخْتَلِفَةِ"
+        chunks = tokenizer.regex_split(text)
+        rejoined = "".join(chunks)
+        assert rejoined == text
+
+    def test_train_from_chunks_arabic_with_tashkil(self):
+        """Test training directly from regex-split chunks."""
+        text = "الْكِتَابُ الْكِتَابُ الْقَلَمُ الْقَلَمُ الْمَدْرَسَةُ الْمَدْرَسَةُ"
+        tokenizer = Tokenizer()
+
+        result = tokenizer.train(text, num_merges=20, verbose=False)
+
+        # Verify the result is a list of lists (chunks)
+        assert isinstance(result, list)
+        assert all(isinstance(chunk, list) for chunk in result)
+
+        # Decode and verify
+        decoded = tokenizer.decode([item for sublist in result for item in sublist])  # type: ignore
+        assert decoded == text

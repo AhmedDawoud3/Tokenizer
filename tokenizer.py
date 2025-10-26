@@ -1,6 +1,7 @@
 from collections import Counter
 from typing import List
 
+import regex as re
 from tqdm import tqdm
 
 GPT4_SPLIT_PATTERN = r"""'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+(?:\p{L}\p{Mn}*)+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]++[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+"""
@@ -8,7 +9,7 @@ GPT2_SPLIT_PATTERN = r"""'s|'t|'re|'ve|'m|'ll|'d| ?(?:\p{L}\p{Mn}*)+| ?\p{N}+| ?
 
 
 class Tokenizer:
-    def __init__(self, merges: List[tuple[tuple[int, int], int]] = None):  # type: ignore
+    def __init__(self, merges: List[tuple[tuple[int, int], int]] = None, regex_pattern: str = GPT4_SPLIT_PATTERN):  # type: ignore
         if merges is not None:
             if not all(
                 isinstance(pair, tuple) and len(pair) == 2 and isinstance(id, int)
@@ -21,6 +22,10 @@ class Tokenizer:
                         f"Merges must have consecutive IDs starting from 256. "
                         f"Found {merge[1]} at position {i}, expected {256 + i}."
                     )
+
+        if regex_pattern is not None:
+            self.regex_pattern = regex_pattern
+            self.regex = re.compile(self.regex_pattern)
 
         self.merges = merges if merges is not None else []
         self.vocab_size = 256 + len(self.merges)
@@ -39,9 +44,11 @@ class Tokenizer:
                 raise ValueError("Either vocab_size or num_merges must be provided.")
             vocab_size = self.vocab_size + num_merges
 
-        ids = self.text_to_ids(text)
+        chunks = self.regex_split(text)
 
-        original_len = len(ids)
+        ids = self.encode(chunks)
+
+        original_len = len(ids) if isinstance(ids, str) else sum(len(seq) for seq in ids)  # type: ignore
 
         progress = tqdm(
             range(vocab_size - self.vocab_size),
@@ -51,6 +58,10 @@ class Tokenizer:
         )
         for _ in progress:
             stats = self.stats(ids)
+            if not stats:
+                if verbose:
+                    print("No more pairs to merge.")
+                break
             replace = max(stats.items(), key=lambda x: x[1])
             pair, count = replace
             new_id = 256 + len(self.merges)
@@ -66,15 +77,19 @@ class Tokenizer:
             ids = new_ids
 
         if verbose:
+            if isinstance(ids[0], List):
+                new_len = sum(len(seq) for seq in ids)  # type: ignore
+            else:
+                new_len = len(ids)
             print(
-                f"Original length: {original_len}, New length: {len(ids)},"
-                f" Compression: {original_len / len(ids):.2f}x"
+                f"Original length: {original_len}, New length: {new_len},"
+                f" Compression: {original_len / new_len:.2f}x"
             )
 
         self.vocab_size = vocab_size
         self.update_tokentobytes()
 
-        return text
+        return ids
 
     def update_tokentobytes(self):
         self.tokentobytes = {token: bytes([token]) for token in range(256)}
@@ -97,7 +112,7 @@ class Tokenizer:
                 merges.append(((int(pair_0), int(pair_1)), int(new_id)))
         return cls(merges)
 
-    def encode(self, text: str) -> List[int]:
+    def encode(self, text: str | List) -> List[int] | List[List[int]]:
         ids = self.text_to_ids(text)
         for pair, new_id in self.merges:
             ids = self.merge(ids, pair, new_id)
@@ -106,18 +121,39 @@ class Tokenizer:
     def decode(self, ids: List[int]) -> str:
         return self.ids_to_text(ids)
 
-    def merge(self, ids: List[int], pair: tuple[int, int], new_id: int) -> List[int]:
+    def merge(
+        self, ids: List[int] | List[List[int]], pair: tuple[int, int], new_id: int
+    ) -> List[int]:
         new_ids = []
-        i = 0
-        while i < len(ids) - 1:
-            if ids[i] == pair[0] and ids[i + 1] == pair[1]:
-                new_ids.append(new_id)
-                i += 2
-            else:
+        if isinstance(ids[0], int):
+            i = 0
+            while i < len(ids) - 1:
+                if ids[i] == pair[0] and ids[i + 1] == pair[1]:
+                    new_ids.append(new_id)
+                    i += 2
+                else:
+                    new_ids.append(ids[i])
+                    i += 1
+            if i < len(ids):
                 new_ids.append(ids[i])
-                i += 1
-        if i < len(ids):
-            new_ids.append(ids[i])
+        elif isinstance(ids[0], List):
+            for seq in ids:
+                assert isinstance(seq, List)
+                if len(seq) < 2:
+                    new_ids.append(seq)
+                    continue
+                new_seq = []
+                i = 0
+                while i < len(seq) - 1:
+                    if seq[i] == pair[0] and seq[i + 1] == pair[1]:
+                        new_seq.append(new_id)
+                        i += 2
+                    else:
+                        new_seq.append(seq[i])
+                        i += 1
+                if i < len(seq):
+                    new_seq.append(seq[i])
+                new_ids.append(new_seq)
 
         return new_ids
 
@@ -125,6 +161,9 @@ class Tokenizer:
         return b"".join(self.tokentobytes[id] for id in ids).decode(
             "utf-8", errors="replace"
         )
+
+    def regex_split(self, text: str) -> List[str]:
+        return self.regex.findall(text)
 
     def __len__(self) -> int:
         return self.vocab_size
@@ -140,12 +179,22 @@ class Tokenizer:
         return [t.decode("utf-8", errors="ignore") for t in self.tokentobytes.values()]
 
     @classmethod
-    def text_to_ids(cls, text: str) -> List[int]:
+    def text_to_ids(cls, text: str | List[str]) -> List[int] | List[List[int]]:
+        if isinstance(text, List):
+            return [cls.text_to_ids(t) for t in text]  # type: ignore
         return list(map(int, text.encode("utf-8")))
 
     @classmethod
-    def stats(cls, ids: List[int]) -> Counter[tuple[int, int]]:
-        return Counter(zip(ids, ids[1:]))
+    def stats(cls, ids: List[List[int]]) -> Counter[tuple[int, int]]:
+        total_counter: Counter = Counter()
+        if not ids:
+            return total_counter
+
+        for seq in ids:  # type: ignore
+            if len(seq) >= 2:
+                for pair in zip(seq, seq[1:]):
+                    total_counter[pair] += 1
+        return total_counter
 
     def dump_tokens(self, filename: str):
         with open(filename, "w", encoding="utf-8") as f:
